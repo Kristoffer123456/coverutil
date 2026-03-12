@@ -12,6 +12,7 @@ public class SettingsForm : Form
     private TextBox _clientSecretBox = null!;
     private TextBox _nowPlayingBox = null!;
     private TextBox _outputBox = null!;
+    private TextBox _defaultCoverBox = null!;
     private Label _statusLabel = null!;
 
     public SettingsForm(AppConfig config, Action onSaved)
@@ -79,6 +80,15 @@ public class SettingsForm : Form
         layout.Controls.Add(browseOut, 2, row);
         row++;
 
+        // Default Cover Path
+        layout.Controls.Add(new Label { Text = "Default cover:", Anchor = AnchorStyles.Left | AnchorStyles.Right, AutoSize = true, Padding = new Padding(0, 6, 0, 0) }, 0, row);
+        _defaultCoverBox = new TextBox { Dock = DockStyle.Fill, ReadOnly = true, Margin = new Padding(3) };
+        layout.Controls.Add(_defaultCoverBox, 1, row);
+        var browseDefault = new Button { Text = "Browse", Dock = DockStyle.Fill, Margin = new Padding(3) };
+        browseDefault.Click += BrowseDefaultCover;
+        layout.Controls.Add(browseDefault, 2, row);
+        row++;
+
         // Status label
         _statusLabel = new Label { Text = "", AutoSize = true, ForeColor = System.Drawing.Color.DarkRed, Margin = new Padding(3) };
         layout.Controls.Add(_statusLabel, 0, row);
@@ -99,6 +109,7 @@ public class SettingsForm : Form
         _clientSecretBox.Text = _config.SpotifyClientSecret;
         _nowPlayingBox.Text = _config.NowPlayingPath;
         _outputBox.Text = _config.OutputPath;
+        _defaultCoverBox.Text = _config.DefaultCoverPath;
     }
 
     private void BrowseNowPlaying(object? sender, EventArgs e)
@@ -131,6 +142,19 @@ public class SettingsForm : Form
             _outputBox.Text = dlg.FileName;
     }
 
+    private void BrowseDefaultCover(object? sender, EventArgs e)
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "Select default cover image",
+            Filter = "Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png|All files (*.*)|*.*"
+        };
+        if (!string.IsNullOrEmpty(_defaultCoverBox.Text))
+            dlg.InitialDirectory = System.IO.Path.GetDirectoryName(_defaultCoverBox.Text);
+        if (dlg.ShowDialog() == DialogResult.OK)
+            _defaultCoverBox.Text = dlg.FileName;
+    }
+
     private void Save(object? sender, EventArgs e)
     {
         if (string.IsNullOrWhiteSpace(_clientIdBox.Text) || string.IsNullOrWhiteSpace(_clientSecretBox.Text))
@@ -144,6 +168,7 @@ public class SettingsForm : Form
         _config.SpotifyClientSecret = _clientSecretBox.Text.Trim();
         _config.NowPlayingPath = _nowPlayingBox.Text.Trim();
         _config.OutputPath = _outputBox.Text.Trim();
+        _config.DefaultCoverPath = _defaultCoverBox.Text.Trim();
 
         try
         {

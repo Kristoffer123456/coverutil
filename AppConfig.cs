@@ -10,6 +10,7 @@ public class AppConfig
     public string SpotifyClientSecret { get; set; } = "";
     public string NowPlayingPath { get; set; } = "";
     public string OutputPath { get; set; } = "";
+    public string DefaultCoverPath { get; set; } = "";
 
     static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
