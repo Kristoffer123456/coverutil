@@ -13,8 +13,8 @@ public class MainForm : Form
     private readonly Func<AppConfig> _getConfig;
     private readonly Action _quit;
 
-    private const int CoverSize = 260;
-    private const int StripHeight = 108; // track + status + buttons
+    private const int StripHeight = 100;
+    private const int DefaultCoverSize = 280;
 
     public MainForm(Func<AppConfig> getConfig, Action openSettings, Action viewLog, Action quit)
     {
@@ -22,72 +22,70 @@ public class MainForm : Form
         _quit = quit;
 
         Text = "coverutil";
-        FormBorderStyle = FormBorderStyle.FixedSingle;
+        FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
-        // ClientSize makes the cover area exactly CoverSize×CoverSize
-        ClientSize = new Size(CoverSize, CoverSize + StripHeight);
+        MinimumSize = new Size(160, 160 + StripHeight + SystemInformation.CaptionHeight);
+        ClientSize = new Size(DefaultCoverSize, DefaultCoverSize + StripHeight);
 
-        // ── Cover (fills everything above the strip) ──────────────────────
+        // ── Cover — fills all space above the strip ───────────────────────
         _coverBox = new PictureBox
         {
             Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.Zoom,
+            SizeMode = PictureBoxSizeMode.StretchImage,
             BackColor = Color.FromArgb(20, 20, 20)
         };
 
-        // ── Bottom strip ──────────────────────────────────────────────────
-        var strip = new Panel
+        // ── Bottom strip — TableLayoutPanel avoids docking-order ambiguity ─
+        var strip = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
-            Height = StripHeight
+            Height = StripHeight,
+            ColumnCount = 1,
+            RowCount = 3,
+            Padding = new Padding(6, 4, 6, 6)
         };
+        strip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        strip.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // track label
+        strip.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); // status label
+        strip.RowStyles.Add(new RowStyle(SizeType.Absolute, 32)); // buttons
 
-        // Button row (docked to bottom of strip)
-        var btnRow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            Height = 36,
-            FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(6, 4, 6, 4)
-        };
-        var settingsBtn = new Button { Text = "Settings", Height = 26, AutoSize = true, Padding = new Padding(6, 0, 6, 0) };
-        settingsBtn.Click += (_, _) => openSettings();
-        var logBtn = new Button { Text = "View Log", Height = 26, AutoSize = true, Padding = new Padding(6, 0, 6, 0) };
-        logBtn.Click += (_, _) => viewLog();
-        btnRow.Controls.Add(settingsBtn);
-        btnRow.Controls.Add(logBtn);
-
-        // Status label (above buttons)
-        _statusLabel = new Label
-        {
-            Dock = DockStyle.Bottom,
-            Height = 20,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.Gray,
-            Font = new Font(SystemFonts.DefaultFont.FontFamily, 8f),
-            Padding = new Padding(4, 0, 4, 0)
-        };
-
-        // Track label (fills remaining strip space)
         _trackLabel = new Label
         {
             Text = "No track",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font(SystemFonts.DefaultFont.FontFamily, 10f, FontStyle.Bold),
-            AutoEllipsis = true,
-            Padding = new Padding(4, 6, 4, 0)
+            AutoEllipsis = true
         };
+        strip.Controls.Add(_trackLabel, 0, 0);
 
-        // Add to strip — DockStyle.Bottom items added first so they anchor at the bottom,
-        // Fill added last so it takes the remaining space
-        strip.Controls.Add(btnRow);
-        strip.Controls.Add(_statusLabel);
-        strip.Controls.Add(_trackLabel);
+        _statusLabel = new Label
+        {
+            Text = "",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.Gray,
+            Font = new Font(SystemFonts.DefaultFont.FontFamily, 8f)
+        };
+        strip.Controls.Add(_statusLabel, 0, 1);
 
-        // Add to form — Bottom first, Fill last
+        var btnRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.LeftToRight,
+            Padding = new Padding(0)
+        };
+        var settingsBtn = new Button { Text = "Settings", Height = 26, AutoSize = true };
+        settingsBtn.Click += (_, _) => openSettings();
+        var logBtn = new Button { Text = "View Log", Height = 26, AutoSize = true };
+        logBtn.Click += (_, _) => viewLog();
+        btnRow.Controls.Add(settingsBtn);
+        btnRow.Controls.Add(logBtn);
+        strip.Controls.Add(btnRow, 0, 2);
+
+        // Add strip first (Bottom), cover last (Fill) — standard WinForms dock order
         Controls.Add(strip);
         Controls.Add(_coverBox);
 
