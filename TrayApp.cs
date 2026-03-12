@@ -39,7 +39,9 @@ public class TrayApp : ApplicationContext
         // Thumbnail picture box embedded in the menu
         _thumbnailBox = new PictureBox
         {
-            Size = new Size(80, 80),
+            Size = new Size(40, 40),
+            MinimumSize = new Size(40, 40),
+            MaximumSize = new Size(40, 40),
             SizeMode = PictureBoxSizeMode.Zoom,
             BackColor = Color.FromArgb(30, 30, 30),
             Cursor = Cursors.Hand
@@ -47,7 +49,9 @@ public class TrayApp : ApplicationContext
         _thumbnailBox.Click += (_, _) => ShowCoverPreview();
         var thumbnailHost = new ToolStripControlHost(_thumbnailBox)
         {
-            Margin = new Padding(4, 4, 4, 2)
+            AutoSize = false,
+            Size = new Size(44, 44),
+            Margin = new Padding(4, 2, 4, 2)
         };
 
         _trackItem = new ToolStripMenuItem("No track yet") { Enabled = false };
@@ -189,6 +193,9 @@ public class TrayApp : ApplicationContext
             };
             SetStatus("Watching...");
             Logger.LogApp($"Watching: {_config.NowPlayingPath}");
+
+            // Read current file contents immediately on start
+            System.Threading.Tasks.Task.Run(ProcessChange);
         }
         catch (Exception ex)
         {
