@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -57,7 +58,8 @@ public class SpotifyClient
 
     private async Task<string> DoSearchAsync(string artist, string title, bool retried)
     {
-        var query = Uri.EscapeDataString($"{artist} {title}");
+        // Use Spotify field filters for a precise search instead of freetext
+        var query = Uri.EscapeDataString($"artist:{artist} track:{title}");
         var url = $"https://api.spotify.com/v1/search?q={query}&type=track&limit=1";
         Logger.Log($"Spotify search: {url}");
 
@@ -86,7 +88,12 @@ public class SpotifyClient
         if (items.GetArrayLength() == 0)
             throw new Exception($"No results for: {artist} - {title}");
 
-        var images = items[0].GetProperty("album").GetProperty("images");
+        var track = items[0];
+
+        // Verify the returned artist matches what we searched for
+        VerifyArtist(artist, track);
+
+        var images = track.GetProperty("album").GetProperty("images");
         if (images.GetArrayLength() == 0)
             throw new Exception($"No art for: {artist} - {title}");
 
@@ -94,6 +101,55 @@ public class SpotifyClient
             ?? throw new Exception("Image URL was null");
         Logger.Log($"Image URL: {imageUrl}");
         return imageUrl;
+    }
+
+    /// <summary>
+    /// Throws if none of the track's artists (or album artists) match the queried artist.
+    /// Comparison is case-insensitive, diacritic-folded, and allows substring matches
+    /// to handle "feat.", "og", "and", etc.
+    /// </summary>
+    private static void VerifyArtist(string queryArtist, JsonElement track)
+    {
+        var qNorm = NormalizeArtist(queryArtist);
+
+        // Collect all artist names from both track-level and album-level
+        var names = new System.Collections.Generic.List<string>();
+
+        foreach (var a in track.GetProperty("artists").EnumerateArray())
+        {
+            var n = a.GetProperty("name").GetString();
+            if (n != null) names.Add(n);
+        }
+        foreach (var a in track.GetProperty("album").GetProperty("artists").EnumerateArray())
+        {
+            var n = a.GetProperty("name").GetString();
+            if (n != null) names.Add(n);
+        }
+
+        foreach (var name in names)
+        {
+            var rNorm = NormalizeArtist(name);
+            // Pass if either side contains the other (handles "The X" vs "X", "X feat. Y" vs "X")
+            if (qNorm == rNorm || rNorm.Contains(qNorm) || qNorm.Contains(rNorm))
+                return;
+        }
+
+        var returned = names.Count > 0 ? string.Join(", ", names) : "unknown";
+        Logger.Log($"Artist mismatch: searched '{queryArtist}', got '{returned}'");
+        throw new Exception($"Artist mismatch: searched for '{queryArtist}', got '{returned}'");
+    }
+
+    /// <summary>
+    /// Lowercase + strip diacritics (ø→o, å→a, é→e, etc.) for fuzzy comparison.
+    /// </summary>
+    private static string NormalizeArtist(string s)
+    {
+        var decomposed = s.ToLowerInvariant().Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(decomposed.Length);
+        foreach (char c in decomposed)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        return sb.ToString().Normalize(NormalizationForm.FormC).Trim();
     }
 
     public async Task FetchAndSaveImageAsync(string imageUrl, string outputPath)
