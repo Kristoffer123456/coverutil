@@ -20,7 +20,7 @@ public class CoverPreviewForm : Form
         MaximizeBox = false;
         MinimizeBox = false;
 
-        const int size = 400;
+        const int size = 200;
         _pictureBox = new PictureBox
         {
             Size = new Size(size, size),

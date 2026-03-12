@@ -24,7 +24,7 @@ public class TrayApp : ApplicationContext
     public TrayApp()
     {
         _config = AppConfig.Load();
-        Logger.Log("coverutil started");
+        Logger.LogApp("coverutil started");
         BuildTrayIcon();
         StartWatcher();
     }
@@ -158,7 +158,7 @@ public class TrayApp : ApplicationContext
             string.IsNullOrWhiteSpace(_config.OutputPath))
         {
             SetStatus("Config incomplete — open Settings");
-            Logger.Log("Watcher not started: config incomplete");
+            Logger.LogApp("Watcher not started: config incomplete");
             return;
         }
 
@@ -184,16 +184,16 @@ public class TrayApp : ApplicationContext
             _watcher.Error += (_, e) =>
             {
                 var msg = $"Watcher error: {e.GetException().Message}";
-                Logger.Log(msg);
+                Logger.LogApp(msg);
                 SetStatus(msg);
             };
             SetStatus("Watching...");
-            Logger.Log($"Watching: {_config.NowPlayingPath}");
+            Logger.LogApp($"Watching: {_config.NowPlayingPath}");
         }
         catch (Exception ex)
         {
             var msg = $"Watcher setup error: {ex.Message}";
-            Logger.Log(msg);
+            Logger.LogApp(msg);
             SetStatus(msg);
         }
     }
@@ -214,13 +214,15 @@ public class TrayApp : ApplicationContext
         catch (Exception ex)
         {
             var msg = $"Read error: {ex.Message}";
-            Logger.Log(msg);
+            Logger.LogApp(msg);
             SetStatus(msg);
             return;
         }
 
         if (string.IsNullOrEmpty(content))
         {
+            Logger.LogApp("File is empty — applying default cover");
+            ApplyDefaultCover();
             SetStatus("File is empty");
             return;
         }
@@ -229,7 +231,8 @@ public class TrayApp : ApplicationContext
         if (parsed is null)
         {
             var msg = $"Bad format: {content}";
-            Logger.Log(msg);
+            Logger.LogApp($"{msg} — applying default cover");
+            ApplyDefaultCover();
             SetStatus(msg);
             return;
         }
@@ -237,7 +240,7 @@ public class TrayApp : ApplicationContext
         var (artist, title) = parsed.Value;
         SetCurrentTrack(artist, title);
         SetStatus($"Fetching: {artist} - {title}");
-        Logger.Log($"Fetching art for: {artist} - {title}");
+        Logger.LogApp($"Fetching art: {artist} - {title}");
 
         try
         {
@@ -245,11 +248,12 @@ public class TrayApp : ApplicationContext
             _spotify.FetchAndSaveImageAsync(imageUrl, _config.OutputPath).GetAwaiter().GetResult();
             UpdateThumbnail(_config.OutputPath);
             SetStatus($"OK: {artist} - {title}");
-            Logger.Log($"Art saved: {artist} - {title}");
+            Logger.LogApp($"OK: {artist} - {title}");
         }
         catch (Exception ex)
         {
-            Logger.Log($"Error fetching art for {artist} - {title}: {ex.Message}");
+            Logger.Log($"Exception for {artist} - {title}: {ex}");
+            Logger.LogApp($"Error: {ex.Message}");
             ApplyDefaultCover();
             SetStatus($"Error: {ex.Message}");
         }
@@ -266,11 +270,11 @@ public class TrayApp : ApplicationContext
         {
             File.Copy(_config.DefaultCoverPath, _config.OutputPath, overwrite: true);
             UpdateThumbnail(_config.OutputPath);
-            Logger.Log($"Default cover applied: {_config.DefaultCoverPath}");
+            Logger.LogApp($"Default cover applied");
         }
         catch (Exception ex)
         {
-            Logger.Log($"Failed to apply default cover: {ex.Message}");
+            Logger.LogApp($"Failed to apply default cover: {ex.Message}");
         }
     }
 
@@ -301,11 +305,17 @@ public class TrayApp : ApplicationContext
         catch { }
     }
 
-    private static void ViewLog()
+    private LogViewerForm? _logViewerForm;
+
+    private void ViewLog()
     {
-        if (!File.Exists(Logger.LogPath)) return;
-        try { Process.Start(new ProcessStartInfo("notepad.exe", Logger.LogPath) { UseShellExecute = true }); }
-        catch { }
+        if (_logViewerForm != null && !_logViewerForm.IsDisposed)
+        {
+            _logViewerForm.BringToFront();
+            return;
+        }
+        _logViewerForm = new LogViewerForm();
+        _logViewerForm.Show();
     }
 
     private void OpenSettings()
@@ -320,7 +330,7 @@ public class TrayApp : ApplicationContext
 
     private void Quit()
     {
-        Logger.Log("coverutil exiting");
+        Logger.LogApp("coverutil exiting");
         _watcher?.Dispose();
         _debounceTimer?.Dispose();
         _trayIcon.Visible = false;
