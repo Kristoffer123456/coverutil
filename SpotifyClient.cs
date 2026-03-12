@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace coverutil;
@@ -53,7 +54,31 @@ public class SpotifyClient
     public async Task<string> SearchTrackAsync(string artist, string title)
     {
         await GetTokenAsync();
-        return await DoSearchAsync(artist, title, retried: false);
+        try
+        {
+            return await DoSearchAsync(artist, title, retried: false);
+        }
+        catch (Exception ex) when (IsRetryableFailure(ex.Message))
+        {
+            var altArtist = SubstituteConjunction(artist);
+            if (altArtist == artist) throw;
+            Logger.Log($"Retrying with transformed artist: '{artist}' → '{altArtist}'");
+            return await DoSearchAsync(altArtist, title, retried: false);
+        }
+    }
+
+    private static bool IsRetryableFailure(string msg) =>
+        msg.StartsWith("No results") || msg.StartsWith("Artist mismatch");
+
+    /// <summary>
+    /// Replaces whole-word "og" or "and" with "&" to match how Spotify stores artist names.
+    /// e.g. "Marit og Irene" → "Marit & Irene", "Simon and Garfunkel" → "Simon & Garfunkel"
+    /// </summary>
+    private static string SubstituteConjunction(string artist)
+    {
+        var result = Regex.Replace(artist, @"\b(og|and)\b", "&", RegexOptions.IgnoreCase);
+        result = Regex.Replace(result, @"\s*&\s*", " & "); // normalize spaces around &
+        return result.Trim();
     }
 
     private async Task<string> DoSearchAsync(string artist, string title, bool retried)

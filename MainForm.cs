@@ -13,75 +13,83 @@ public class MainForm : Form
     private readonly Func<AppConfig> _getConfig;
     private readonly Action _quit;
 
+    private const int CoverSize = 260;
+    private const int StripHeight = 108; // track + status + buttons
+
     public MainForm(Func<AppConfig> getConfig, Action openSettings, Action viewLog, Action quit)
     {
         _getConfig = getConfig;
         _quit = quit;
 
         Text = "coverutil";
-        Width = 300;
-        Height = 360;
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
+        // ClientSize makes the cover area exactly CoverSize×CoverSize
+        ClientSize = new Size(CoverSize, CoverSize + StripHeight);
 
-        var panel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            ColumnCount = 1,
-            RowCount = 4,
-            Padding = new Padding(12)
-        };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 220)); // cover
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));  // track
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));  // status
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));  // buttons
-
+        // ── Cover (fills everything above the strip) ──────────────────────
         _coverBox = new PictureBox
         {
             Dock = DockStyle.Fill,
             SizeMode = PictureBoxSizeMode.Zoom,
-            BackColor = Color.FromArgb(30, 30, 30)
+            BackColor = Color.FromArgb(20, 20, 20)
         };
-        panel.Controls.Add(_coverBox, 0, 0);
 
+        // ── Bottom strip ──────────────────────────────────────────────────
+        var strip = new Panel
+        {
+            Dock = DockStyle.Bottom,
+            Height = StripHeight
+        };
+
+        // Button row (docked to bottom of strip)
+        var btnRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 36,
+            FlowDirection = FlowDirection.LeftToRight,
+            Padding = new Padding(6, 4, 6, 4)
+        };
+        var settingsBtn = new Button { Text = "Settings", Height = 26, AutoSize = true, Padding = new Padding(6, 0, 6, 0) };
+        settingsBtn.Click += (_, _) => openSettings();
+        var logBtn = new Button { Text = "View Log", Height = 26, AutoSize = true, Padding = new Padding(6, 0, 6, 0) };
+        logBtn.Click += (_, _) => viewLog();
+        btnRow.Controls.Add(settingsBtn);
+        btnRow.Controls.Add(logBtn);
+
+        // Status label (above buttons)
+        _statusLabel = new Label
+        {
+            Dock = DockStyle.Bottom,
+            Height = 20,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = Color.Gray,
+            Font = new Font(SystemFonts.DefaultFont.FontFamily, 8f),
+            Padding = new Padding(4, 0, 4, 0)
+        };
+
+        // Track label (fills remaining strip space)
         _trackLabel = new Label
         {
             Text = "No track",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font(SystemFonts.DefaultFont.FontFamily, 10f, FontStyle.Bold),
-            AutoEllipsis = true
+            AutoEllipsis = true,
+            Padding = new Padding(4, 6, 4, 0)
         };
-        panel.Controls.Add(_trackLabel, 0, 1);
 
-        _statusLabel = new Label
-        {
-            Text = "",
-            Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.Gray,
-            Font = new Font(SystemFonts.DefaultFont.FontFamily, 8f)
-        };
-        panel.Controls.Add(_statusLabel, 0, 2);
+        // Add to strip — DockStyle.Bottom items added first so they anchor at the bottom,
+        // Fill added last so it takes the remaining space
+        strip.Controls.Add(btnRow);
+        strip.Controls.Add(_statusLabel);
+        strip.Controls.Add(_trackLabel);
 
-        var btnPanel = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.RightToLeft,
-            Padding = new Padding(0, 4, 0, 0)
-        };
-        var settingsBtn = new Button { Text = "Settings", AutoSize = true };
-        settingsBtn.Click += (_, _) => openSettings();
-        var logBtn = new Button { Text = "Log", AutoSize = true };
-        logBtn.Click += (_, _) => viewLog();
-        btnPanel.Controls.Add(settingsBtn);
-        btnPanel.Controls.Add(logBtn);
-        panel.Controls.Add(btnPanel, 0, 3);
-
-        Controls.Add(panel);
+        // Add to form — Bottom first, Fill last
+        Controls.Add(strip);
+        Controls.Add(_coverBox);
 
         Resize += OnResize;
         FormClosing += OnFormClosing;
@@ -111,7 +119,7 @@ public class MainForm : Form
         try
         {
             var bytes = File.ReadAllBytes(imagePath);
-            using var ms = new System.IO.MemoryStream(bytes);
+            using var ms = new MemoryStream(bytes);
             var newImage = Image.FromStream(ms);
             var old = _coverBox.Image;
             _coverBox.Image = newImage;
