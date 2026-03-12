@@ -13,7 +13,7 @@ public class MainForm : Form
     private readonly Func<AppConfig> _getConfig;
     private readonly Action _quit;
 
-    private const int StripHeight = 100;
+    private const int StripHeight = 112; // track + status + buttons — enough for no clipping
     private const int DefaultCoverSize = 280;
 
     public MainForm(Func<AppConfig> getConfig, Action openSettings, Action viewLog, Action quit)
@@ -26,30 +26,34 @@ public class MainForm : Form
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
-        MinimumSize = new Size(160, 160 + StripHeight + SystemInformation.CaptionHeight);
-        ClientSize = new Size(DefaultCoverSize, DefaultCoverSize + StripHeight);
 
-        // ── Cover — fills all space above the strip ───────────────────────
+        // Enforce square cover: height = cover width + strip
+        ClientSize = new Size(DefaultCoverSize, DefaultCoverSize + StripHeight);
+        MinimumSize = new Size(
+            160 + SystemInformation.BorderSize.Width * 2,
+            160 + StripHeight + SystemInformation.CaptionHeight + SystemInformation.BorderSize.Height * 2);
+
+        // ── Cover (fills everything above the strip) ───────────────────────
         _coverBox = new PictureBox
         {
             Dock = DockStyle.Fill,
-            SizeMode = PictureBoxSizeMode.StretchImage,
+            SizeMode = PictureBoxSizeMode.Zoom,
             BackColor = Color.FromArgb(20, 20, 20)
         };
 
-        // ── Bottom strip — TableLayoutPanel avoids docking-order ambiguity ─
+        // ── Bottom strip via TableLayoutPanel (avoids docking-order ambiguity) ──
         var strip = new TableLayoutPanel
         {
             Dock = DockStyle.Bottom,
             Height = StripHeight,
             ColumnCount = 1,
             RowCount = 3,
-            Padding = new Padding(6, 4, 6, 6)
+            Padding = new Padding(8, 6, 8, 8)
         };
         strip.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        strip.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // track label
-        strip.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); // status label
-        strip.RowStyles.Add(new RowStyle(SizeType.Absolute, 32)); // buttons
+        strip.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); // track label — fills
+        strip.RowStyles.Add(new RowStyle(SizeType.Absolute, 20)); // status
+        strip.RowStyles.Add(new RowStyle(SizeType.Absolute, 30)); // buttons
 
         _trackLabel = new Label
         {
@@ -75,22 +79,31 @@ public class MainForm : Form
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.LeftToRight,
-            Padding = new Padding(0)
+            Padding = new Padding(0),
+            Margin = new Padding(0)
         };
-        var settingsBtn = new Button { Text = "Settings", Height = 26, AutoSize = true };
+        var settingsBtn = new Button { Text = "Settings", AutoSize = true };
         settingsBtn.Click += (_, _) => openSettings();
-        var logBtn = new Button { Text = "View Log", Height = 26, AutoSize = true };
+        var logBtn = new Button { Text = "View Log", AutoSize = true };
         logBtn.Click += (_, _) => viewLog();
         btnRow.Controls.Add(settingsBtn);
         btnRow.Controls.Add(logBtn);
         strip.Controls.Add(btnRow, 0, 2);
 
-        // Add strip first (Bottom), cover last (Fill) — standard WinForms dock order
+        // Strip docked Bottom first, cover Fill last — standard WinForms dock order
         Controls.Add(strip);
         Controls.Add(_coverBox);
 
+        ResizeEnd += (_, _) => EnforceSquareCover();
         Resize += OnResize;
         FormClosing += OnFormClosing;
+    }
+
+    // Keep cover square: snap height to match cover width after each resize
+    private void EnforceSquareCover()
+    {
+        if (WindowState != FormWindowState.Normal) return;
+        ClientSize = new Size(ClientSize.Width, ClientSize.Width + StripHeight);
     }
 
     public void UpdateTrack(string? artist, string? title)
