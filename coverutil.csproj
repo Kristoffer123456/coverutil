@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ApplicationIcon>assets\tray-icon.ico</ApplicationIcon>
+    <AssemblyName>coverutil</AssemblyName>
+    <RootNamespace>coverutil</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Update="assets\tray-icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
