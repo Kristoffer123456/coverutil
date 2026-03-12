@@ -11,6 +11,7 @@ public class AppConfig
     public string NowPlayingPath { get; set; } = "";
     public string OutputPath { get; set; } = "";
     public string DefaultCoverPath { get; set; } = "";
+    public bool CloseToTray { get; set; } = true;
 
     static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),

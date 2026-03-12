@@ -18,8 +18,11 @@ public class TrayApp : ApplicationContext
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _debounceTimer;
     private CoverPreviewForm? _previewForm;
+    private LogViewerForm? _logViewerForm;
+    private MainForm? _mainForm;
     private string? _currentArtist;
     private string? _currentTitle;
+    private int _processing; // Interlocked flag — prevents concurrent ProcessChange
 
     public TrayApp()
     {
@@ -36,7 +39,6 @@ public class TrayApp : ApplicationContext
         try { icon = new Icon(iconPath); }
         catch { icon = SystemIcons.Application; }
 
-        // Thumbnail picture box embedded in the menu
         _thumbnailBox = new PictureBox
         {
             Size = new Size(40, 40),
@@ -56,6 +58,9 @@ public class TrayApp : ApplicationContext
 
         _trackItem = new ToolStripMenuItem("No track yet") { Enabled = false };
         _statusItem = new ToolStripMenuItem("Idle") { Enabled = false };
+
+        var openWindowItem = new ToolStripMenuItem("Open window");
+        openWindowItem.Click += (_, _) => OpenMainWindow();
 
         var openNowPlayingItem = new ToolStripMenuItem("Open now_playing folder");
         openNowPlayingItem.Click += (_, _) => OpenFolder(_config.NowPlayingPath);
@@ -83,6 +88,7 @@ public class TrayApp : ApplicationContext
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add(openWindowItem);
         menu.Items.Add(openNowPlayingItem);
         menu.Items.Add(openCoverItem);
         menu.Items.Add(previewItem);
@@ -99,7 +105,10 @@ public class TrayApp : ApplicationContext
             ContextMenuStrip = menu,
             Visible = true
         };
+        _trayIcon.DoubleClick += (_, _) => OpenMainWindow();
     }
+
+    // ── UI update helpers ────────────────────────────────────────────────────
 
     private void SetStatus(string msg)
     {
@@ -110,11 +119,13 @@ public class TrayApp : ApplicationContext
         }
         _statusItem.Text = msg;
 
-        // Hover tooltip: prefer "Artist - Title" if known, else status
         var hoverText = (!string.IsNullOrEmpty(_currentArtist))
             ? $"{_currentArtist} - {_currentTitle}"
             : msg;
         _trayIcon.Text = hoverText.Length > 63 ? hoverText[..63] : hoverText;
+
+        if (_mainForm != null && !_mainForm.IsDisposed)
+            _mainForm.UpdateStatus(msg);
     }
 
     private void SetCurrentTrack(string artist, string title)
@@ -129,6 +140,25 @@ public class TrayApp : ApplicationContext
         _trackItem.Text = $"{artist} - {title}";
         var hoverText = $"{artist} - {title}";
         _trayIcon.Text = hoverText.Length > 63 ? hoverText[..63] : hoverText;
+
+        if (_mainForm != null && !_mainForm.IsDisposed)
+            _mainForm.UpdateTrack(artist, title);
+    }
+
+    private void ClearCurrentTrack()
+    {
+        if (_trayIcon.ContextMenuStrip?.InvokeRequired == true)
+        {
+            _trayIcon.ContextMenuStrip.Invoke(ClearCurrentTrack);
+            return;
+        }
+        _currentArtist = null;
+        _currentTitle = null;
+        _trackItem.Text = "No track";
+        _trayIcon.Text = "coverutil";
+
+        if (_mainForm != null && !_mainForm.IsDisposed)
+            _mainForm.UpdateTrack(null, null);
     }
 
     private void UpdateThumbnail(string imagePath)
@@ -140,7 +170,6 @@ public class TrayApp : ApplicationContext
         }
         try
         {
-            // Load into a MemoryStream so the file isn't locked
             var bytes = File.ReadAllBytes(imagePath);
             using var ms = new System.IO.MemoryStream(bytes);
             var newImage = Image.FromStream(ms);
@@ -149,7 +178,12 @@ public class TrayApp : ApplicationContext
             oldImage?.Dispose();
         }
         catch { }
+
+        if (_mainForm != null && !_mainForm.IsDisposed)
+            _mainForm.UpdateCover(imagePath);
     }
+
+    // ── Watcher ──────────────────────────────────────────────────────────────
 
     public void StartWatcher()
     {
@@ -194,7 +228,7 @@ public class TrayApp : ApplicationContext
             SetStatus("Watching...");
             Logger.LogApp($"Watching: {_config.NowPlayingPath}");
 
-            // Read current file contents immediately on start
+            // Read current file immediately on (re)start
             System.Threading.Tasks.Task.Run(ProcessChange);
         }
         catch (Exception ex)
@@ -213,6 +247,25 @@ public class TrayApp : ApplicationContext
 
     private void ProcessChange()
     {
+        // Skip if a fetch is already in progress
+        if (Interlocked.CompareExchange(ref _processing, 1, 0) != 0)
+        {
+            Logger.Log("ProcessChange skipped — already running");
+            return;
+        }
+
+        try
+        {
+            DoProcessChange();
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _processing, 0);
+        }
+    }
+
+    private void DoProcessChange()
+    {
         string content;
         try
         {
@@ -228,8 +281,9 @@ public class TrayApp : ApplicationContext
 
         if (string.IsNullOrEmpty(content))
         {
-            Logger.LogApp("File is empty — applying default cover");
+            ClearCurrentTrack();
             ApplyDefaultCover();
+            Logger.LogApp("File is empty — applying default cover");
             SetStatus("File is empty");
             return;
         }
@@ -237,10 +291,10 @@ public class TrayApp : ApplicationContext
         var parsed = ParseNowPlaying(content);
         if (parsed is null)
         {
-            var msg = $"Bad format: {content}";
-            Logger.LogApp($"{msg} — applying default cover");
+            ClearCurrentTrack();
             ApplyDefaultCover();
-            SetStatus(msg);
+            Logger.LogApp($"Bad format: {content} — applying default cover");
+            SetStatus($"Bad format: {content}");
             return;
         }
 
@@ -277,7 +331,7 @@ public class TrayApp : ApplicationContext
         {
             File.Copy(_config.DefaultCoverPath, _config.OutputPath, overwrite: true);
             UpdateThumbnail(_config.OutputPath);
-            Logger.LogApp($"Default cover applied");
+            Logger.LogApp("Default cover applied");
         }
         catch (Exception ex)
         {
@@ -290,6 +344,31 @@ public class TrayApp : ApplicationContext
         int idx = content.IndexOf(" - ", StringComparison.Ordinal);
         if (idx < 0) return null;
         return (content[..idx].Trim(), content[(idx + 3)..].Trim());
+    }
+
+    // ── Window management ────────────────────────────────────────────────────
+
+    private void OpenMainWindow()
+    {
+        if (_mainForm == null || _mainForm.IsDisposed)
+        {
+            _mainForm = new MainForm(
+                () => _config,
+                OpenSettings,
+                ViewLog,
+                Quit);
+
+            // Seed current state into the new window
+            _mainForm.UpdateTrack(_currentArtist, _currentTitle);
+            _mainForm.UpdateStatus(_statusItem.Text ?? "");
+            if (!string.IsNullOrEmpty(_config.OutputPath))
+                _mainForm.UpdateCover(_config.OutputPath);
+        }
+
+        _mainForm.Show();
+        if (_mainForm.WindowState == System.Windows.Forms.FormWindowState.Minimized)
+            _mainForm.WindowState = System.Windows.Forms.FormWindowState.Normal;
+        _mainForm.BringToFront();
     }
 
     private void ShowCoverPreview()
@@ -312,8 +391,6 @@ public class TrayApp : ApplicationContext
         catch { }
     }
 
-    private LogViewerForm? _logViewerForm;
-
     private void ViewLog()
     {
         if (_logViewerForm != null && !_logViewerForm.IsDisposed)
@@ -335,7 +412,7 @@ public class TrayApp : ApplicationContext
         form.Show();
     }
 
-    private void Quit()
+    public void Quit()
     {
         Logger.LogApp("coverutil exiting");
         _watcher?.Dispose();

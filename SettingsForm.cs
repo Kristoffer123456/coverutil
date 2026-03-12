@@ -13,6 +13,7 @@ public class SettingsForm : Form
     private TextBox _nowPlayingBox = null!;
     private TextBox _outputBox = null!;
     private TextBox _defaultCoverBox = null!;
+    private CheckBox _closeToTrayBox = null!;
     private Label _statusLabel = null!;
 
     public SettingsForm(AppConfig config, Action onSaved)
@@ -89,6 +90,18 @@ public class SettingsForm : Form
         layout.Controls.Add(browseDefault, 2, row);
         row++;
 
+        // Close to tray
+        _closeToTrayBox = new CheckBox
+        {
+            Text = "Close window to tray (uncheck to quit on close)",
+            Dock = DockStyle.Fill,
+            AutoSize = true,
+            Margin = new Padding(3, 6, 3, 3)
+        };
+        layout.Controls.Add(_closeToTrayBox, 0, row);
+        layout.SetColumnSpan(_closeToTrayBox, 3);
+        row++;
+
         // Status label
         _statusLabel = new Label { Text = "", AutoSize = true, ForeColor = System.Drawing.Color.DarkRed, Margin = new Padding(3) };
         layout.Controls.Add(_statusLabel, 0, row);
@@ -110,6 +123,7 @@ public class SettingsForm : Form
         _nowPlayingBox.Text = _config.NowPlayingPath;
         _outputBox.Text = _config.OutputPath;
         _defaultCoverBox.Text = _config.DefaultCoverPath;
+        _closeToTrayBox.Checked = _config.CloseToTray;
     }
 
     private void BrowseNowPlaying(object? sender, EventArgs e)
@@ -169,6 +183,7 @@ public class SettingsForm : Form
         _config.NowPlayingPath = _nowPlayingBox.Text.Trim();
         _config.OutputPath = _outputBox.Text.Trim();
         _config.DefaultCoverPath = _defaultCoverBox.Text.Trim();
+        _config.CloseToTray = _closeToTrayBox.Checked;
 
         try
         {
