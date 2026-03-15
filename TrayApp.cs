@@ -18,7 +18,6 @@ public class TrayApp : ApplicationContext
     private FileSystemWatcher? _watcher;
     private System.Threading.Timer? _debounceTimer;
     private CoverPreviewForm? _previewForm;
-    private LogViewerForm? _logViewerForm;
     private MainForm? _mainForm;
     private string? _currentArtist;
     private string? _currentTitle;
@@ -161,6 +160,23 @@ public class TrayApp : ApplicationContext
             _mainForm.UpdateTrack(null, null);
     }
 
+    private void SetRawDisplayTrack(string text)
+    {
+        if (_trayIcon.ContextMenuStrip?.InvokeRequired == true)
+        {
+            _trayIcon.ContextMenuStrip.Invoke(() => SetRawDisplayTrack(text));
+            return;
+        }
+        _currentArtist = null;
+        _currentTitle = null;
+        _trackItem.Text = string.IsNullOrEmpty(text) ? "No track" : text;
+        var hover = string.IsNullOrEmpty(text) ? "coverutil" : text;
+        _trayIcon.Text = hover.Length > 63 ? hover[..63] : hover;
+
+        if (_mainForm != null && !_mainForm.IsDisposed)
+            _mainForm.UpdateTrack(text, null);
+    }
+
     private void UpdateThumbnail(string imagePath)
     {
         if (_thumbnailBox.InvokeRequired)
@@ -281,7 +297,7 @@ public class TrayApp : ApplicationContext
 
         if (string.IsNullOrEmpty(content))
         {
-            ClearCurrentTrack();
+            SetRawDisplayTrack("");
             ApplyDefaultCover();
             Logger.LogApp("File is empty — applying default cover");
             SetStatus("File is empty");
@@ -291,7 +307,7 @@ public class TrayApp : ApplicationContext
         var parsed = ParseNowPlaying(content);
         if (parsed is null)
         {
-            ClearCurrentTrack();
+            SetRawDisplayTrack(content);
             ApplyDefaultCover();
             Logger.LogApp($"Bad format: {content} — applying default cover");
             SetStatus($"Bad format: {content}");
@@ -354,8 +370,7 @@ public class TrayApp : ApplicationContext
         {
             _mainForm = new MainForm(
                 () => _config,
-                OpenSettings,
-                ViewLog,
+                () => { _config = AppConfig.Load(); StartWatcher(); },
                 Quit);
 
             // Seed current state into the new window
@@ -393,23 +408,14 @@ public class TrayApp : ApplicationContext
 
     private void ViewLog()
     {
-        if (_logViewerForm != null && !_logViewerForm.IsDisposed)
-        {
-            _logViewerForm.BringToFront();
-            return;
-        }
-        _logViewerForm = new LogViewerForm();
-        _logViewerForm.Show();
+        OpenMainWindow();
+        _mainForm?.SwitchToTab(MainTab.Log);
     }
 
     private void OpenSettings()
     {
-        var form = new SettingsForm(_config, () =>
-        {
-            _config = AppConfig.Load();
-            StartWatcher();
-        });
-        form.Show();
+        OpenMainWindow();
+        _mainForm?.SwitchToTab(MainTab.Settings);
     }
 
     public void Quit()

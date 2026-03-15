@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -14,6 +15,7 @@ public class SpotifyClient
     private readonly HttpClient _http = new();
     private string? _accessToken;
     private DateTime _expiresAt = DateTime.MinValue;
+    private readonly ConcurrentDictionary<string, string> _urlCache = new(StringComparer.OrdinalIgnoreCase);
 
     private string _clientId = "";
     private string _clientSecret = "";
@@ -53,18 +55,29 @@ public class SpotifyClient
 
     public async Task<string> SearchTrackAsync(string artist, string title)
     {
+        var key = $"{artist.Trim()}|{title.Trim()}";
+        if (_urlCache.TryGetValue(key, out var cachedUrl))
+        {
+            Logger.Log($"Cache hit: {key}");
+            return cachedUrl;
+        }
+
         await GetTokenAsync();
+        string imageUrl;
         try
         {
-            return await DoSearchAsync(artist, title, retried: false);
+            imageUrl = await DoSearchAsync(artist, title, retried: false);
         }
         catch (Exception ex) when (IsRetryableFailure(ex.Message))
         {
             var altArtist = SubstituteConjunction(artist);
             if (altArtist == artist) throw;
             Logger.Log($"Retrying with transformed artist: '{artist}' → '{altArtist}'");
-            return await DoSearchAsync(altArtist, title, retried: false);
+            imageUrl = await DoSearchAsync(altArtist, title, retried: false);
         }
+
+        _urlCache[key] = imageUrl;
+        return imageUrl;
     }
 
     private static bool IsRetryableFailure(string msg) =>

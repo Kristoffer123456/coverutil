@@ -12,6 +12,9 @@ public class AppConfig
     public string OutputPath { get; set; } = "";
     public string DefaultCoverPath { get; set; } = "";
     public bool CloseToTray { get; set; } = true;
+    public int WindowX { get; set; } = -1;
+    public int WindowY { get; set; } = -1;
+    public int WindowWidth { get; set; } = 280;
 
     static readonly string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
