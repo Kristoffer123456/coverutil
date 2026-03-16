@@ -171,3 +171,23 @@ public class SpotifyClientTests
         Assert.StartsWith("Artist mismatch:", ex.Message);
     }
 }
+
+public class SpotifyClientIntegrationTests
+{
+    [SkippableFact]
+    [Trait("Category", "Integration")]
+    public async Task Search_RealSpotify_ReturnsImageUrl()
+    {
+        var clientId     = Environment.GetEnvironmentVariable("SPOTIFY_CLIENT_ID");
+        var clientSecret = Environment.GetEnvironmentVariable("SPOTIFY_CLIENT_SECRET");
+        Skip.If(string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(clientSecret),
+            "SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET not set — skipping integration test");
+
+        var sut = new SpotifyClient();
+        sut.Configure(clientId!, clientSecret!);
+
+        var url = await sut.SearchTrackAsync("Daft Punk", "Get Lucky");
+        Assert.False(string.IsNullOrEmpty(url));
+        Assert.StartsWith("https://", url);
+    }
+}
