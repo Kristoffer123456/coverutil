@@ -304,7 +304,7 @@ public class TrayApp : ApplicationContext
             return;
         }
 
-        var parsed = ParseNowPlaying(content);
+        var parsed = NowPlayingParser.Parse(content);
         if (parsed is null)
         {
             SetRawDisplayTrack(content);
@@ -353,13 +353,6 @@ public class TrayApp : ApplicationContext
         {
             Logger.LogApp($"Failed to apply default cover: {ex.Message}");
         }
-    }
-
-    private static (string artist, string title)? ParseNowPlaying(string content)
-    {
-        int idx = content.IndexOf(" - ", StringComparison.Ordinal);
-        if (idx < 0) return null;
-        return (content[..idx].Trim(), content[(idx + 3)..].Trim());
     }
 
     // ── Window management ────────────────────────────────────────────────────
