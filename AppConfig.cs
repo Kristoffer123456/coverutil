@@ -16,7 +16,7 @@ public class AppConfig
     public int WindowY { get; set; } = -1;
     public int WindowWidth { get; set; } = 280;
 
-    static readonly string ConfigPath = Path.Combine(
+    internal static string ConfigPath = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         "coverutil", "config.json");
 
