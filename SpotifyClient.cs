@@ -20,6 +20,15 @@ public class SpotifyClient
     private string _clientId = "";
     private string _clientSecret = "";
 
+    public SpotifyClient()
+    {
+    }
+
+    internal SpotifyClient(HttpClient http)
+    {
+        _http = http;
+    }
+
     public void Configure(string clientId, string clientSecret)
     {
         _clientId = clientId;
@@ -87,7 +96,7 @@ public class SpotifyClient
     /// Replaces whole-word "og" or "and" with "&" to match how Spotify stores artist names.
     /// e.g. "Marit og Irene" → "Marit & Irene", "Simon and Garfunkel" → "Simon & Garfunkel"
     /// </summary>
-    private static string SubstituteConjunction(string artist)
+    internal static string SubstituteConjunction(string artist)
     {
         var result = Regex.Replace(artist, @"\b(og|and)\b", "&", RegexOptions.IgnoreCase);
         result = Regex.Replace(result, @"\s*&\s*", " & "); // normalize spaces around &
@@ -146,7 +155,7 @@ public class SpotifyClient
     /// Comparison is case-insensitive, diacritic-folded, and allows substring matches
     /// to handle "feat.", "og", "and", etc.
     /// </summary>
-    private static void VerifyArtist(string queryArtist, JsonElement track)
+    internal static void VerifyArtist(string queryArtist, JsonElement track)
     {
         var qNorm = NormalizeArtist(queryArtist);
 
@@ -180,7 +189,7 @@ public class SpotifyClient
     /// <summary>
     /// Lowercase + strip diacritics (ø→o, å→a, é→e, etc.) for fuzzy comparison.
     /// </summary>
-    private static string NormalizeArtist(string s)
+    internal static string NormalizeArtist(string s)
     {
         var decomposed = s.ToLowerInvariant().Normalize(NormalizationForm.FormD);
         var sb = new StringBuilder(decomposed.Length);
