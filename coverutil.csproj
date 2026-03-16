@@ -9,6 +9,11 @@
     <RootNamespace>coverutil</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="coverutil.Tests\**" />
+    <None Remove="coverutil.Tests\**" />
+    <EmbeddedResource Remove="coverutil.Tests\**" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="assets\tray-icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
