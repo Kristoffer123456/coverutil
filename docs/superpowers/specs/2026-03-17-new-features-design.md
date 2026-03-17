@@ -41,7 +41,7 @@ Uses `Microsoft.Win32.Registry` (included in `net8.0-windows`, no new package de
 public bool StartWithWindows { get; set; } = false;
 ```
 
-This field is persisted in `config.json` and reflects the user's *intent*. The Settings panel reads the *actual registry state* via `WindowsAutoStart.IsEnabled()` when it loads, not the config value, so the checkbox is always accurate even if the exe path changed.
+This field is persisted in `config.json` and reflects the user's *intent*. The Settings panel reads the *actual registry state* via `WindowsAutoStart.IsEnabled()` when it loads, not the config value, so the checkbox is always accurate even if the exe path changed. Note: `StartWithWindows` is write-only from the UI's perspective — it is set on Save but never read back to populate the checkbox. This is intentional; the registry is the single source of truth.
 
 **Settings panel change**
 
@@ -96,6 +96,14 @@ public async Task FetchAndSaveImageAsync(string imageUrl, string outputPath, int
 
 Add an **"Output size (px)"** text field with placeholder text `e.g. 240, 500, 640`. Validation on Save: must parse as an integer between 50 and 4000. If invalid, show error via `_settingsStatus` and do not save.
 
+**`ImageHelper` doc comment**
+
+Update the XML doc comment from `"Resize image bytes to 640×640"` to `"Resize image bytes to size×size"` to remain accurate for non-default sizes.
+
+**`SpotifyClient` log string**
+
+`FetchAndSaveImageAsync` currently logs `"resizing to 640×640 JPEG"`. Update to `$"resizing to {size}×{size} JPEG"` to keep the log accurate at non-default sizes.
+
 **`ImageHelperTests` change**
 
 All calls to `ResizeAndSaveAsJpeg` in tests explicitly pass `640` as the size argument to remain self-documenting. No logic changes.
@@ -137,7 +145,7 @@ The migrated value is saved back on the next `Save()` call, cleanly removing the
 
 Replace the single `FileSystemWatcher? _watcher` with `List<FileSystemWatcher> _watchers = new()`.
 
-`StartWatcher()` iterates `_config.NowPlayingSources`, validates each path, and creates one `FileSystemWatcher` per valid source. All watchers share the same `OnFileChanged` handler.
+`StartWatcher()` disposes and clears `_watchers`, then iterates `_config.NowPlayingSources`. For each path: if the directory does not exist or the path is blank, log a warning and skip that source (do not abort). Creates one `FileSystemWatcher` per valid source. All watchers share the same `OnFileChanged` handler. This means Source 2 being temporarily absent is a normal operating condition — it is silently skipped rather than causing an error.
 
 `DoProcessChange()` changes its file-reading logic:
 
@@ -164,7 +172,16 @@ Replace the single "Now playing file" row with two rows:
 
 On Save, `NowPlayingSources` is built from these two fields, omitting blank entries.
 
-On load, `_source1Box.Text = sources.ElementAtOrDefault(0) ?? ""` and `_source2Box.Text = sources.ElementAtOrDefault(1) ?? ""`.
+On load (both `BuildSettingsPanel` initial population and `SwitchToTab` repopulation on tab switch):
+```csharp
+_source1Box.Text = sources.ElementAtOrDefault(0) ?? "";
+_source2Box.Text = sources.ElementAtOrDefault(1) ?? "";
+```
+Both locations must be updated — `SwitchToTab` currently repopulates `_nowPlayingBox.Text = cfg.NowPlayingPath` and must be changed to populate the two new source boxes instead.
+
+**Tray menu — "Open now_playing folder"**
+
+`TrayApp.BuildTrayIcon()` currently binds this item to `OpenFolder(_config.NowPlayingPath)`. After migration `NowPlayingPath` is always empty. Update the binding to use `_config.NowPlayingSources.FirstOrDefault()` (opens the folder of Source 1, or does nothing if no sources are configured).
 
 ---
 
@@ -176,7 +193,7 @@ On load, `_source1Box.Text = sources.ElementAtOrDefault(0) ?? ""` and `_source2B
 | Modify | `AppConfig.cs` | Add `StartWithWindows`, `OutputSize`, `NowPlayingSources`; migrate `NowPlayingPath` |
 | Modify | `ImageHelper.cs` | Add `size` parameter to `ResizeAndSaveAsJpeg` |
 | Modify | `SpotifyClient.cs` | Add `size` parameter to `FetchAndSaveImageAsync` |
-| Modify | `TrayApp.cs` | Multi-watcher, priority source reading, pass `OutputSize` |
+| Modify | `TrayApp.cs` | Multi-watcher, priority source reading, pass `OutputSize`, fix tray menu "Open now_playing folder" |
 | Modify | `MainForm.cs` | Settings panel: auto-start checkbox, output size field, two source fields |
 | Modify | `coverutil.Tests/ImageHelperTests.cs` | Pass explicit `640` to updated method signature |
 
