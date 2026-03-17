@@ -199,11 +199,11 @@ public class SpotifyClient
         return sb.ToString().Normalize(NormalizationForm.FormC).Trim();
     }
 
-    public async Task FetchAndSaveImageAsync(string imageUrl, string outputPath)
+    public async Task FetchAndSaveImageAsync(string imageUrl, string outputPath, int size = 640)
     {
         Logger.Log($"Downloading image: {imageUrl}");
         var bytes = await _http.GetByteArrayAsync(imageUrl);
-        Logger.Log($"Downloaded {bytes.Length} bytes — resizing to 640×640 JPEG");
-        ImageHelper.ResizeAndSaveAsJpeg(bytes, outputPath);
+        Logger.Log($"Downloaded {bytes.Length} bytes — resizing to {size}×{size} JPEG");
+        ImageHelper.ResizeAndSaveAsJpeg(bytes, outputPath, size);
     }
 }
