@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace coverutil;
 
@@ -16,12 +17,12 @@ public class AppConfig
     public int    WindowY             { get; set; } = -1;
     public int    WindowWidth         { get; set; } = 280;
 
-    // New fields
     public List<string> NowPlayingSources { get; set; } = new();
     public int  OutputSize        { get; set; } = 640;
     public bool StartWithWindows  { get; set; } = false;
 
     // Legacy — kept for migration only; not used in new code
+    [JsonIgnore]
     public string NowPlayingPath { get; set; } = "";
 
     internal static string ConfigPath = Path.Combine(
