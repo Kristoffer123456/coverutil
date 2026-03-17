@@ -125,10 +125,40 @@ coverutil/
     └── tray-icon.ico
 ```
 
-## Roadmap
+## Development
 
-The following is planned and has a written spec at `docs/superpowers/specs/2026-03-12-ui-redesign-design.md`:
+### Running tests
 
-- **UI redesign** — dark theme (`#0e0e0e`), bottom tab strip (Cover / Settings / Log), Settings and Log moved inline into the main window, `SettingsForm.cs` and `LogViewerForm.cs` deleted
-- **Session cache** — `ConcurrentDictionary` in `SpotifyClient` to avoid redundant Spotify lookups for repeated tracks
-- **Window position memory** — main window restores to its last position and size on reopen
+```bash
+dotnet test coverutil.Tests/ --filter "Category!=Integration"   # unit tests (fast, no network)
+dotnet test coverutil.Tests/ --filter "Category=Integration"    # requires SPOTIFY_CLIENT_ID + SPOTIFY_CLIENT_SECRET env vars
+```
+
+### Git workflow
+
+Work on short-lived feature branches, merge to `master` when done:
+
+```bash
+git checkout -b feature/my-feature
+# ... commit as you go ...
+dotnet test coverutil.Tests/ --filter "Category!=Integration"
+git checkout master && git merge feature/my-feature
+git branch -d feature/my-feature
+```
+
+### Releasing
+
+1. Bump `<Version>` in `coverutil.csproj`
+2. Build and publish:
+
+```bash
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o publish/
+```
+
+3. Tag and create GitHub release:
+
+```bash
+git add coverutil.csproj && git commit -m "chore: bump version to X.Y.Z"
+git tag vX.Y.Z && git push && git push origin vX.Y.Z
+gh release create vX.Y.Z publish/coverutil.exe --title "coverutil vX.Y.Z" --notes "..."
+```
