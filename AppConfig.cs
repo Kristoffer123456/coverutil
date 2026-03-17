@@ -22,7 +22,7 @@ public class AppConfig
     public bool StartWithWindows  { get; set; } = false;
 
     // Legacy — kept for migration only; not used in new code
-    [JsonIgnore]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public string NowPlayingPath { get; set; } = "";
 
     internal static string ConfigPath = Path.Combine(
