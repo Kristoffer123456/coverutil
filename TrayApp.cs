@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -15,7 +17,7 @@ public class TrayApp : ApplicationContext
     private PictureBox _thumbnailBox = null!;
     private AppConfig _config;
     private readonly SpotifyClient _spotify = new();
-    private FileSystemWatcher? _watcher;
+    private readonly List<FileSystemWatcher> _watchers = new();
     private System.Threading.Timer? _debounceTimer;
     private CoverPreviewForm? _previewForm;
     private MainForm? _mainForm;
@@ -62,7 +64,7 @@ public class TrayApp : ApplicationContext
         openWindowItem.Click += (_, _) => OpenMainWindow();
 
         var openNowPlayingItem = new ToolStripMenuItem("Open now_playing folder");
-        openNowPlayingItem.Click += (_, _) => OpenFolder(_config.NowPlayingPath);
+        openNowPlayingItem.Click += (_, _) => OpenFolder(_config.NowPlayingSources.FirstOrDefault());
 
         var openCoverItem = new ToolStripMenuItem("Open cover folder");
         openCoverItem.Click += (_, _) => OpenFolder(_config.OutputPath);
@@ -203,12 +205,12 @@ public class TrayApp : ApplicationContext
 
     public void StartWatcher()
     {
-        _watcher?.Dispose();
-        _watcher = null;
+        foreach (var w in _watchers) w.Dispose();
+        _watchers.Clear();
 
         if (string.IsNullOrWhiteSpace(_config.SpotifyClientId) ||
             string.IsNullOrWhiteSpace(_config.SpotifyClientSecret) ||
-            string.IsNullOrWhiteSpace(_config.NowPlayingPath) ||
+            _config.NowPlayingSources.Count == 0 ||
             string.IsNullOrWhiteSpace(_config.OutputPath))
         {
             SetStatus("Config incomplete — open Settings");
@@ -218,40 +220,59 @@ public class TrayApp : ApplicationContext
 
         _spotify.Configure(_config.SpotifyClientId, _config.SpotifyClientSecret);
 
-        var dir = Path.GetDirectoryName(_config.NowPlayingPath);
-        var file = Path.GetFileName(_config.NowPlayingPath);
-
-        if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(file))
+        bool anyStarted = false;
+        foreach (var sourcePath in _config.NowPlayingSources)
         {
-            SetStatus("Invalid now_playing path");
-            return;
+            if (string.IsNullOrWhiteSpace(sourcePath)) continue;
+
+            var dir  = Path.GetDirectoryName(sourcePath);
+            var file = Path.GetFileName(sourcePath);
+
+            if (string.IsNullOrEmpty(dir) || string.IsNullOrEmpty(file))
+            {
+                Logger.LogApp($"Skipping invalid source path: {sourcePath}");
+                continue;
+            }
+
+            if (!Directory.Exists(dir))
+            {
+                Logger.LogApp($"Skipping source — directory not found: {dir}");
+                continue;
+            }
+
+            try
+            {
+                var watcher = new FileSystemWatcher(dir, file)
+                {
+                    NotifyFilter = NotifyFilters.LastWrite,
+                    EnableRaisingEvents = true
+                };
+                watcher.Changed += OnFileChanged;
+                watcher.Error   += (_, e) =>
+                {
+                    var msg = $"Watcher error: {e.GetException().Message}";
+                    Logger.LogApp(msg);
+                    SetStatus(msg);
+                };
+                _watchers.Add(watcher);
+                Logger.LogApp($"Watching: {sourcePath}");
+                anyStarted = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.LogApp($"Watcher setup error for {sourcePath}: {ex.Message}");
+            }
         }
 
-        try
+        if (anyStarted)
         {
-            _watcher = new FileSystemWatcher(dir, file)
-            {
-                NotifyFilter = NotifyFilters.LastWrite,
-                EnableRaisingEvents = true
-            };
-            _watcher.Changed += OnFileChanged;
-            _watcher.Error += (_, e) =>
-            {
-                var msg = $"Watcher error: {e.GetException().Message}";
-                Logger.LogApp(msg);
-                SetStatus(msg);
-            };
             SetStatus("Watching...");
-            Logger.LogApp($"Watching: {_config.NowPlayingPath}");
-
-            // Read current file immediately on (re)start
             System.Threading.Tasks.Task.Run(ProcessChange);
         }
-        catch (Exception ex)
+        else
         {
-            var msg = $"Watcher setup error: {ex.Message}";
-            Logger.LogApp(msg);
-            SetStatus(msg);
+            SetStatus("No valid sources configured");
+            Logger.LogApp("Watcher not started: no valid sources");
         }
     }
 
@@ -282,17 +303,17 @@ public class TrayApp : ApplicationContext
 
     private void DoProcessChange()
     {
-        string content;
-        try
+        // Read sources in priority order — use first non-empty
+        string content = "";
+        foreach (var sourcePath in _config.NowPlayingSources)
         {
-            content = File.ReadAllText(_config.NowPlayingPath).Trim();
-        }
-        catch (Exception ex)
-        {
-            var msg = $"Read error: {ex.Message}";
-            Logger.LogApp(msg);
-            SetStatus(msg);
-            return;
+            if (string.IsNullOrWhiteSpace(sourcePath)) continue;
+            try
+            {
+                var read = File.ReadAllText(sourcePath).Trim();
+                if (!string.IsNullOrEmpty(read)) { content = read; break; }
+            }
+            catch { continue; }
         }
 
         if (string.IsNullOrEmpty(content))
@@ -322,7 +343,7 @@ public class TrayApp : ApplicationContext
         try
         {
             var imageUrl = _spotify.SearchTrackAsync(artist, title).GetAwaiter().GetResult();
-            _spotify.FetchAndSaveImageAsync(imageUrl, _config.OutputPath).GetAwaiter().GetResult();
+            _spotify.FetchAndSaveImageAsync(imageUrl, _config.OutputPath, _config.OutputSize).GetAwaiter().GetResult();
             UpdateThumbnail(_config.OutputPath);
             SetStatus($"OK: {artist} - {title}");
             Logger.LogApp($"OK: {artist} - {title}");
@@ -414,7 +435,8 @@ public class TrayApp : ApplicationContext
     public void Quit()
     {
         Logger.LogApp("coverutil exiting");
-        _watcher?.Dispose();
+        foreach (var w in _watchers) w.Dispose();
+        _watchers.Clear();
         _debounceTimer?.Dispose();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
@@ -425,7 +447,7 @@ public class TrayApp : ApplicationContext
     {
         if (disposing)
         {
-            _watcher?.Dispose();
+            foreach (var w in _watchers) w.Dispose();
             _debounceTimer?.Dispose();
             _thumbnailBox.Image?.Dispose();
             _trayIcon?.Dispose();
