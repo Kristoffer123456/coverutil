@@ -36,13 +36,16 @@ public class MainForm : Form
 
     private readonly PictureBox _coverBox;
 
-    private TextBox   _clientIdBox      = null!;
-    private TextBox   _clientSecretBox  = null!;
-    private TextBox   _nowPlayingBox    = null!;
-    private TextBox   _outputBox        = null!;
-    private TextBox   _defaultCoverBox  = null!;
-    private CheckBox  _closeToTrayBox   = null!;
-    private Label     _settingsStatus   = null!;
+    private TextBox   _clientIdBox          = null!;
+    private TextBox   _clientSecretBox      = null!;
+    private TextBox   _source1Box           = null!;
+    private TextBox   _source2Box           = null!;
+    private TextBox   _outputBox            = null!;
+    private TextBox   _defaultCoverBox      = null!;
+    private TextBox   _outputSizeBox        = null!;
+    private CheckBox  _closeToTrayBox       = null!;
+    private CheckBox  _startWithWindowsBox  = null!;
+    private Label     _settingsStatus       = null!;
 
     private RichTextBox _logBox = null!;
 
@@ -210,12 +213,20 @@ public class MainForm : Form
         layout.SetColumnSpan(_clientSecretBox, 2);
         row++;
 
-        layout.Controls.Add(MakeLabel("now_playing.txt:"), 0, row);
-        _nowPlayingBox = MakeTextBox(readOnly: true);
-        layout.Controls.Add(_nowPlayingBox, 1, row);
-        var browseNow = MakeBrowseBtn();
-        browseNow.Click += BrowseNowPlaying;
-        layout.Controls.Add(browseNow, 2, row);
+        layout.Controls.Add(MakeLabel("Source 1 (primary):"), 0, row);
+        _source1Box = MakeTextBox(readOnly: true);
+        layout.Controls.Add(_source1Box, 1, row);
+        var browseSource1 = MakeBrowseBtn();
+        browseSource1.Click += BrowseSource1;
+        layout.Controls.Add(browseSource1, 2, row);
+        row++;
+
+        layout.Controls.Add(MakeLabel("Source 2 (fallback):"), 0, row);
+        _source2Box = MakeTextBox(readOnly: true);
+        layout.Controls.Add(_source2Box, 1, row);
+        var browseSource2 = MakeBrowseBtn();
+        browseSource2.Click += BrowseSource2;
+        layout.Controls.Add(browseSource2, 2, row);
         row++;
 
         layout.Controls.Add(MakeLabel("Output file:"), 0, row);
@@ -234,6 +245,12 @@ public class MainForm : Form
         layout.Controls.Add(browseDefault, 2, row);
         row++;
 
+        layout.Controls.Add(MakeLabel("Output size (px):"), 0, row);
+        _outputSizeBox = MakeTextBox();
+        layout.Controls.Add(_outputSizeBox, 1, row);
+        layout.SetColumnSpan(_outputSizeBox, 2);
+        row++;
+
         _closeToTrayBox = new CheckBox
         {
             Text = "Close window to tray (uncheck to quit on close)",
@@ -242,6 +259,16 @@ public class MainForm : Form
         };
         layout.Controls.Add(_closeToTrayBox, 0, row);
         layout.SetColumnSpan(_closeToTrayBox, 3);
+        row++;
+
+        _startWithWindowsBox = new CheckBox
+        {
+            Text = "Start with Windows",
+            ForeColor = PrimaryText, BackColor = BgColor,
+            Dock = DockStyle.Fill, AutoSize = true, Margin = new Padding(3, 6, 3, 3)
+        };
+        layout.Controls.Add(_startWithWindowsBox, 0, row);
+        layout.SetColumnSpan(_startWithWindowsBox, 3);
         row++;
 
         _settingsStatus = new Label
@@ -263,12 +290,15 @@ public class MainForm : Form
         layout.Controls.Add(saveBtn, 2, row);
 
         var config = _getConfig();
-        _clientIdBox.Text     = config.SpotifyClientId;
-        _clientSecretBox.Text = config.SpotifyClientSecret;
-        _nowPlayingBox.Text   = config.NowPlayingPath;
-        _outputBox.Text       = config.OutputPath;
-        _defaultCoverBox.Text = config.DefaultCoverPath;
-        _closeToTrayBox.Checked = config.CloseToTray;
+        _clientIdBox.Text          = config.SpotifyClientId;
+        _clientSecretBox.Text      = config.SpotifyClientSecret;
+        _source1Box.Text           = config.NowPlayingSources.ElementAtOrDefault(0) ?? "";
+        _source2Box.Text           = config.NowPlayingSources.ElementAtOrDefault(1) ?? "";
+        _outputBox.Text            = config.OutputPath;
+        _defaultCoverBox.Text      = config.DefaultCoverPath;
+        _outputSizeBox.Text        = config.OutputSize.ToString();
+        _closeToTrayBox.Checked    = config.CloseToTray;
+        _startWithWindowsBox.Checked = WindowsAutoStart.IsEnabled();
 
         _settingsPanel.Controls.Add(layout);
     }
@@ -417,13 +447,16 @@ public class MainForm : Form
         if (tab == MainTab.Settings)
         {
             var cfg = _getConfig();
-            _clientIdBox.Text       = cfg.SpotifyClientId;
-            _clientSecretBox.Text   = cfg.SpotifyClientSecret;
-            _nowPlayingBox.Text     = cfg.NowPlayingPath;
-            _outputBox.Text         = cfg.OutputPath;
-            _defaultCoverBox.Text   = cfg.DefaultCoverPath;
-            _closeToTrayBox.Checked = cfg.CloseToTray;
-            _settingsStatus.Text    = "";
+            _clientIdBox.Text              = cfg.SpotifyClientId;
+            _clientSecretBox.Text          = cfg.SpotifyClientSecret;
+            _source1Box.Text               = cfg.NowPlayingSources.ElementAtOrDefault(0) ?? "";
+            _source2Box.Text               = cfg.NowPlayingSources.ElementAtOrDefault(1) ?? "";
+            _outputBox.Text                = cfg.OutputPath;
+            _defaultCoverBox.Text          = cfg.DefaultCoverPath;
+            _outputSizeBox.Text            = cfg.OutputSize.ToString();
+            _closeToTrayBox.Checked        = cfg.CloseToTray;
+            _startWithWindowsBox.Checked   = WindowsAutoStart.IsEnabled();
+            _settingsStatus.Text           = "";
         }
         else if (tab == MainTab.Log)
         {
@@ -476,17 +509,30 @@ public class MainForm : Form
 
     // ── Settings panel logic ──────────────────────────────────────────────────
 
-    private void BrowseNowPlaying(object? sender, EventArgs e)
+    private void BrowseSource1(object? sender, EventArgs e)
     {
         using var dlg = new OpenFileDialog
         {
-            Title = "Select now_playing.txt",
+            Title = "Select now_playing.txt (Source 1, primary)",
             Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*"
         };
-        if (!string.IsNullOrEmpty(_nowPlayingBox.Text))
-            dlg.InitialDirectory = Path.GetDirectoryName(_nowPlayingBox.Text);
+        if (!string.IsNullOrEmpty(_source1Box.Text))
+            dlg.InitialDirectory = Path.GetDirectoryName(_source1Box.Text);
         if (dlg.ShowDialog() == DialogResult.OK)
-            _nowPlayingBox.Text = dlg.FileName;
+            _source1Box.Text = dlg.FileName;
+    }
+
+    private void BrowseSource2(object? sender, EventArgs e)
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Title = "Select now_playing.txt (Source 2, fallback)",
+            Filter = "Text files (*.txt)|*.txt|All files (*.*)|*.*"
+        };
+        if (!string.IsNullOrEmpty(_source2Box.Text))
+            dlg.InitialDirectory = Path.GetDirectoryName(_source2Box.Text);
+        if (dlg.ShowDialog() == DialogResult.OK)
+            _source2Box.Text = dlg.FileName;
     }
 
     private void BrowseOutput(object? sender, EventArgs e)
@@ -528,26 +574,56 @@ public class MainForm : Form
             return;
         }
 
+        if (!int.TryParse(_outputSizeBox.Text.Trim(), out int outputSize) || outputSize < 50 || outputSize > 4000)
+        {
+            _settingsStatus.ForeColor = ErrorColor;
+            _settingsStatus.Text      = "Output size must be a number between 50 and 4000.";
+            return;
+        }
+
         var cfg = _getConfig();
         cfg.SpotifyClientId     = _clientIdBox.Text.Trim();
         cfg.SpotifyClientSecret = _clientSecretBox.Text.Trim();
-        cfg.NowPlayingPath      = _nowPlayingBox.Text.Trim();
+        var sources = new System.Collections.Generic.List<string>();
+        if (!string.IsNullOrWhiteSpace(_source1Box.Text)) sources.Add(_source1Box.Text.Trim());
+        if (!string.IsNullOrWhiteSpace(_source2Box.Text)) sources.Add(_source2Box.Text.Trim());
+        cfg.NowPlayingSources   = sources;
         cfg.OutputPath          = _outputBox.Text.Trim();
         cfg.DefaultCoverPath    = _defaultCoverBox.Text.Trim();
+        cfg.OutputSize          = outputSize;
         cfg.CloseToTray         = _closeToTrayBox.Checked;
+        cfg.StartWithWindows    = _startWithWindowsBox.Checked;
 
         try
         {
             cfg.Save();
+
+            try
+            {
+                if (_startWithWindowsBox.Checked)
+                    WindowsAutoStart.Enable(System.Diagnostics.Process.GetCurrentProcess().MainModule!.FileName);
+                else
+                    WindowsAutoStart.Disable();
+            }
+            catch (Exception regEx)
+            {
+                _settingsStatus.ForeColor = ErrorColor;
+                _settingsStatus.Text      = $"Auto-start registry error: {regEx.Message}";
+                return;
+            }
+
             _onSaved();
 
             var reloaded = _getConfig();
-            _clientIdBox.Text       = reloaded.SpotifyClientId;
-            _clientSecretBox.Text   = reloaded.SpotifyClientSecret;
-            _nowPlayingBox.Text     = reloaded.NowPlayingPath;
-            _outputBox.Text         = reloaded.OutputPath;
-            _defaultCoverBox.Text   = reloaded.DefaultCoverPath;
-            _closeToTrayBox.Checked = reloaded.CloseToTray;
+            _clientIdBox.Text              = reloaded.SpotifyClientId;
+            _clientSecretBox.Text          = reloaded.SpotifyClientSecret;
+            _source1Box.Text               = reloaded.NowPlayingSources.ElementAtOrDefault(0) ?? "";
+            _source2Box.Text               = reloaded.NowPlayingSources.ElementAtOrDefault(1) ?? "";
+            _outputBox.Text                = reloaded.OutputPath;
+            _defaultCoverBox.Text          = reloaded.DefaultCoverPath;
+            _outputSizeBox.Text            = reloaded.OutputSize.ToString();
+            _closeToTrayBox.Checked        = reloaded.CloseToTray;
+            _startWithWindowsBox.Checked   = WindowsAutoStart.IsEnabled();
 
             _settingsStatus.ForeColor = AccentColor;
             _settingsStatus.Text      = "Saved.";
